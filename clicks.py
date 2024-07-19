@@ -9,6 +9,10 @@ import subprocess
 import chardet
 
 seed_path = './out/.cur_input'
+start_x = 0
+start_y = 0
+width = 0
+height = 0
 
 if len(sys.argv) > 2 and sys.argv[1] != None and sys.argv[2] != None:
     target_program = sys.argv[1]
@@ -83,6 +87,22 @@ def getScreenResolution():
     resol_value_split = resol_value.split('x')
     return int(resol_value_split[0])
 
+def execute_operation(operator, operands):
+    if operator == 'CLICK':
+        # Use the operands as a percent of the screen to click in order to stay within the window
+        x_percent = operands[0]/256.0
+        y_percent = operands[1]/256.0
+        x_coord = start_x + x_percent * width
+        y_coord = start_y + y_percent * height 
+        pyautogui.click(math.floor(x_coord),math.floor(y_coord))
+        result = f'Clicked at: {x_coord}, {y_coord}'
+    else:
+        result = None
+
+    print(f'Executing {operator} with operands {operands}: {result}')
+    return result
+
+
 time.sleep(3)
 
 window_coords = getWindowCoords()
@@ -91,23 +111,44 @@ start_y = window_coords[1]
 width = window_coords[2]
 height = window_coords[3]
 
+print("Coordinates || StartX: " + str(start_x) + " || StartY: " + str(start_y) + " || Width: " + str(width) + " || Height: " + str(height))
+
 y_padding = 40
 
-seed = ""
+operators = {
+    0x01: ('CLICK', 2),  # Operator + Operand Count
+    0x02: ('MOVETO', 0)
+}
 
-with open(seed_path, 'r', encoding='iso-8859-1') as f:
-	seed = f.read()
+with open(seed_path, 'rb') as f:
+	data = f.read()
 
 # Add a sleep when running in Qemu mode because the target program takes a lot of time to open
 # time.sleep(25)
 
-random_number = generateRandomNumber(seed)
+i = 0
+while i < len(data):
+    byte = data[i]
+    
+    # Loop through the bytes until we find a valid operator code
+    if byte in operators:
+        operator, operand_count = operators[byte]
+        operands = []
+        
+        # Iterate through the operands for the operation we hit
+        for _ in range(operand_count):
+            i += 1
+            if i < len(data):
+                operands.append(data[i])
+            else:
+                raise ValueError("File ended unexpectedly while reading operands")
+        
+        execute_operation(operator, operands)
+    else:
+        print(f'Ignoring unknown byte: {byte}')
 
-for i in range(20):
-    val = random_number()
-    x_val = (start_x - 10) + width * val
-    y_val = (start_y + y_padding - 10) + (height - y_padding) * val
-    pyautogui.click(math.floor(x_val),math.floor(y_val))
+    i += 1
+
 
 time.sleep(1)
 
